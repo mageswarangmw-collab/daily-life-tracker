@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Life Tracker</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.0/umd/Recharts.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #030712; margin: 0; }
+    input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(1); }
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } = Recharts;
+
+    const ROUTINE_ITEMS = ["Bath", "Breakfast", "Lunch", "Dinner"];
+    const ROUTINE_ICONS = { Bath: "🚿", Breakfast: "🍳", Lunch: "🍱", Dinner: "🍽️" };
+    const TABS = ["📚 Upskill", "⏳ Wasted", "😴 Sleep", "🔁 Routine", "📊 Summary"];
+    const SKILL_GOAL = 60;
+    const C = { upskilling: "#818cf8", wasted: "#f87171", sleep: "#60a5fa", routine: "#34d399", unaccounted: "#475569" };
+
+    const minToHM = m => { const h = Math.floor(m / 60), mn = m % 60; return h > 0 ? `${h}h ${mn}m` : `${mn}m`; };
+    const sumArr = arr => arr.reduce((a, b) => a + b, 0);
+    const fmtDate = d => d.toISOString().split("T")[0];
+    const defaultData = () => ({ upskilling: [], wasted: [], sleep: { sleepTime: "", wakeTime: "", duration: 0 }, routine: { Bath: 0, Breakfast: 0, Lunch: 0, Dinner: 0 }, others: [] });
+
+    // localStorage helpers
+    const storage = {
+      get: key => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; } },
+      set: (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }
+    };
+
+    function App() {
+      const [date, setDate] = useState(new Date());
+      const [data, setData] = useState(null);
+      const [tab, setTab] = useState(0);
+      const key = `tracker_${fmtDate(date)}`;
+      const isToday = fmtDate(date) === fmtDate(new Date());
+
+      useEffect(() => {
+        setData(null);
+        const saved = storage.get(key);
+        setData(saved || defaultData());
+      }, [key]);
+
+      const save = d => { setData(d); storage.set(key, d); };
+      const go = off => { const d = new Date(date); d.setDate(d.getDate() + off); if (d <= new Date()) setDate(d); };
+
+      if (!data) return <div className="flex items-center justify-center min-h-screen text-gray-400 text-sm">Loading…</div>;
+
+      const skillMin = sumArr(data.upskilling.map(i => i.dur));
+      const wastedMin = sumArr(data.wasted.map(i => i.dur));
+      const sleepMin = data.sleep.duration || 0;
+      const routineMin = sumArr(ROUTINE_ITEMS.map(k => data.routine[k] || 0)) + sumArr((data.others || []).map(i => i.dur));
+      const unacc = Math.max(0, 1440 - skillMin - wastedMin - sleepMin - routineMin);
+
+      const stats = [
+        { label: "Upskilled", val: minToHM(skillMin), color: "text-indigo-400", bg: "bg-indigo-900/30" },
+        { label: "Wasted", val: minToHM(wastedMin), color: "text-red-400", bg: "bg-red-900/30" },
+        { label: "Sleep", val: minToHM(sleepMin), color: "text-blue-400", bg: "bg-blue-900/30" },
+        { label: "Routine", val: minToHM(routineMin), color: "text-emerald-400", bg: "bg-emerald-900/30" },
+      ];
+
+      return (
+        <div className="min-h-screen bg-gray-950 text-white">
+          <div className="max-w-lg mx-auto px-3 pb-10">
+            <div className="py-4 flex items-center justify-between">
+              <button onClick={() => go(-1)} className="w-9 h-9 flex items-center justify-center bg-gray-800 rounded-full text-white hover:bg-gray-700 text-lg">‹</button>
+              <div className="text-center">
+                <p className="text-sm font-medium">{date.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</p>
+                {isToday && <span className="text-xs bg-indigo-600 px-2 py-0.5 rounded-full">Today</span>}
+              </div>
+              <button onClick={() => go(1)} disabled={isToday} className="w-9 h-9 flex items-center justify-center bg-gray-800 rounded-full text-white hover:bg-gray-700 disabled:opacity-30 text-lg">›</button>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {stats.map(s => (
+                <div key={s.label} className={`${s.bg} rounded-xl p-2 text-center`}>
+                  <p className={`text-base font-bold ${s.color}`}>{s.val}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-1 bg-gray-900 rounded-xl p-1 mb-4 overflow-x-auto">
+              {TABS.map((t, i) => (
+                <button key={t} onClick={() => setTab(i)}
+                  className={`flex-shrink-0 flex-1 text-xs py-1.5 px-1 rounded-lg transition-all whitespace-nowrap ${tab === i ? "bg-indigo-600 text-white font-medium" : "text-gray-400 hover:text-white"}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {tab === 0 && <UpskillTab data={data} save={save} skillMin={skillMin} />}
+            {tab === 1 && <WastedTab data={data} save={save} wastedMin={wastedMin} />}
+            {tab === 2 && <SleepTab data={data} save={save} />}
+            {tab === 3 && <RoutineTab data={data} save={save} routineMin={routineMin} />}
+            {tab === 4 && <SummaryTab skillMin={skillMin} wastedMin={wastedMin} sleepMin={sleepMin} routineMin={routineMin} unacc={unacc} />}
+          </div>
+        </div>
+      );
+    }
+
+    function Card({ children, className = "" }) {
+      return <div className={`bg-gray-900 rounded-xl p-4 ${className}`}>{children}</div>;
+    }
+
+    function UpskillTab({ data, save, skillMin }) {
+      const [topic, setTopic] = useState("");
+      const [dur, setDur] = useState("");
+      const pct = Math.min(100, Math.round((skillMin / SKILL_GOAL) * 100));
+      const add = () => {
+        if (!topic.trim() || !dur) return;
+        const entry = { id: Date.now(), topic: topic.trim(), dur: parseInt(dur), time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) };
+        save({ ...data, upskilling: [...data.upskilling, entry] });
+        setTopic(""); setDur("");
+      };
+      const del = id => save({ ...data, upskilling: data.upskilling.filter(i => i.id !== id) });
+      return (
+        <div className="space-y-3">
+          <Card>
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-gray-400">Daily Goal: 60 min</span>
+              <span className="text-indigo-400 font-semibold">{minToHM(skillMin)}</span>
+            </div>
+            <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+              <div className="h-full bg-indigo-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="text-xs text-gray-500 mt-1.5">{pct}% of goal • {pct >= 100 ? "🎉 Goal reached!" : `${minToHM(SKILL_GOAL - skillMin)} remaining`}</p>
+          </Card>
+          <Card>
+            <p className="text-sm text-gray-300 font-semibold mb-3">Log Session</p>
+            <input value={topic} onChange={e => setTopic(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} placeholder="Topic (e.g. React, SQL, System Design)" className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm mb-2 outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-600" />
+            <div className="flex gap-2">
+              <input value={dur} onChange={e => setDur(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} type="number" min="1" placeholder="Minutes spent" className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-600" />
+              <button onClick={add} className="bg-indigo-600 hover:bg-indigo-700 px-5 rounded-lg text-sm font-medium">Add</button>
+            </div>
+          </Card>
+          <div className="space-y-2">
+            {data.upskilling.length === 0
+              ? <p className="text-gray-600 text-sm text-center py-6">No sessions logged yet</p>
+              : data.upskilling.map(i => (
+                <div key={i.id} className="bg-gray-900 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div><p className="text-sm font-medium">{i.topic}</p><p className="text-xs text-gray-500">{i.time} · <span className="text-indigo-400">{minToHM(i.dur)}</span></p></div>
+                  <button onClick={() => del(i.id)} className="text-gray-600 hover:text-red-400 text-xl leading-none ml-2">×</button>
+                </div>
+              ))}
+          </div>
+        </div>
+      );
+    }
+
+    function WastedTab({ data, save, wastedMin }) {
+      const [activity, setActivity] = useState("");
+      const [dur, setDur] = useState("");
+      const add = () => {
+        if (!activity.trim() || !dur) return;
+        const entry = { id: Date.now(), activity: activity.trim(), dur: parseInt(dur), time: new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) };
+        save({ ...data, wasted: [...data.wasted, entry] });
+        setActivity(""); setDur("");
+      };
+      const del = id => save({ ...data, wasted: data.wasted.filter(i => i.id !== id) });
+      return (
+        <div className="space-y-3">
+          <Card>
+            <p className="text-xs text-gray-500 mb-1">Total wasted today</p>
+            <p className="text-3xl font-bold text-red-400">{minToHM(wastedMin)}</p>
+            {wastedMin === 0 && <p className="text-xs text-emerald-400 mt-1">✓ Nothing logged — stay focused!</p>}
+            {wastedMin > 60 && wastedMin <= 120 && <p className="text-xs text-orange-400 mt-1">⚠ Over an hour wasted — refocus now</p>}
+            {wastedMin > 120 && <p className="text-xs text-red-400 mt-1">🚨 Over 2 hours wasted — take action!</p>}
+          </Card>
+          <Card>
+            <p className="text-sm text-gray-300 font-semibold mb-3">Log Distraction</p>
+            <input value={activity} onChange={e => setActivity(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} placeholder="Activity (e.g. YouTube, Scrolling)" className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm mb-2 outline-none focus:ring-1 focus:ring-red-500 placeholder-gray-600" />
+            <div className="flex gap-2">
+              <input value={dur} onChange={e => setDur(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} type="number" min="1" placeholder="Minutes" className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-red-500 placeholder-gray-600" />
+              <button onClick={add} className="bg-red-600 hover:bg-red-700 px-5 rounded-lg text-sm font-medium">Add</button>
+            </div>
+          </Card>
+          <div className="space-y-2">
+            {data.wasted.length === 0
+              ? <p className="text-gray-600 text-sm text-center py-6">No distractions logged</p>
+              : data.wasted.map(i => (
+                <div key={i.id} className="bg-gray-900 rounded-xl px-4 py-3 flex items-center justify-between">
+                  <div><p className="text-sm font-medium">{i.activity}</p><p className="text-xs text-gray-500">{i.time} · <span className="text-red-400">{minToHM(i.dur)}</span></p></div>
+                  <button onClick={() => del(i.id)} className="text-gray-600 hover:text-red-400 text-xl leading-none ml-2">×</button>
+                </div>
+              ))}
+          </div>
+        </div>
+      );
+    }
+
+    function SleepTab({ data, save }) {
+      const [sleepTime, setSleepTime] = useState(data.sleep.sleepTime || "");
+      const [wakeTime, setWakeTime] = useState(data.sleep.wakeTime || "");
+      const calcDur = (s, w) => {
+        if (!s || !w) return 0;
+        const [sh, sm] = s.split(":").map(Number);
+        const [wh, wm] = w.split(":").map(Number);
+        let diff = (wh * 60 + wm) - (sh * 60 + sm);
+        if (diff < 0) diff += 1440;
+        return diff;
+      };
+      const log = () => { if (!sleepTime || !wakeTime) return; save({ ...data, sleep: { sleepTime, wakeTime, duration: calcDur(sleepTime, wakeTime) } }); };
+      const dur = data.sleep.duration || 0;
+      const preview = calcDur(sleepTime, wakeTime);
+      const status = dur === 0 ? null : dur < 360 ? { txt: "Too little sleep — aim for 7–8h", col: "text-red-400" } : dur < 420 ? { txt: "Slightly below recommended", col: "text-yellow-400" } : dur <= 540 ? { txt: "Great sleep! 😴", col: "text-emerald-400" } : { txt: "Oversleeping — could affect energy", col: "text-yellow-400" };
+      return (
+        <div className="space-y-3">
+          {dur > 0 && (
+            <Card className="text-center">
+              <p className="text-xs text-gray-500 mb-1">Last logged</p>
+              <p className="text-4xl font-bold text-blue-400">{minToHM(dur)}</p>
+              <p className={`text-sm mt-1 ${status?.col}`}>{status?.txt}</p>
+              <p className="text-xs text-gray-500 mt-1">{data.sleep.sleepTime} → {data.sleep.wakeTime}</p>
+            </Card>
+          )}
+          <Card>
+            <p className="text-sm text-gray-300 font-semibold mb-3">Log Sleep</p>
+            <div className="space-y-3">
+              <div><label className="text-xs text-gray-500 block mb-1">Slept at</label><input type="time" value={sleepTime} onChange={e => setSleepTime(e.target.value)} className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" /></div>
+              <div><label className="text-xs text-gray-500 block mb-1">Woke up at</label><input type="time" value={wakeTime} onChange={e => setWakeTime(e.target.value)} className="w-full bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-500" /></div>
+              {sleepTime && wakeTime && preview > 0 && <p className="text-xs text-blue-400">Preview: {minToHM(preview)}</p>}
+              <button onClick={log} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-lg text-sm font-medium">Save Sleep</button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    function RoutineTab({ data, save, routineMin }) {
+      const [otherLabel, setOtherLabel] = useState("");
+      const [otherDur, setOtherDur] = useState("");
+      const setRoutine = (key, val) => save({ ...data, routine: { ...data.routine, [key]: parseInt(val) || 0 } });
+      const addOther = () => {
+        if (!otherLabel.trim() || !otherDur) return;
+        save({ ...data, others: [...(data.others || []), { id: Date.now(), label: otherLabel.trim(), dur: parseInt(otherDur) }] });
+        setOtherLabel(""); setOtherDur("");
+      };
+      const delOther = id => save({ ...data, others: data.others.filter(i => i.id !== id) });
+      return (
+        <div className="space-y-3">
+          <Card><p className="text-xs text-gray-500 mb-1">Total routine time today</p><p className="text-2xl font-bold text-emerald-400">{minToHM(routineMin)}</p></Card>
+          <Card>
+            <p className="text-sm text-gray-300 font-semibold mb-3">Daily Routine</p>
+            <div className="space-y-3">
+              {ROUTINE_ITEMS.map(k => (
+                <div key={k} className="flex items-center gap-3">
+                  <span className="text-xl w-7">{ROUTINE_ICONS[k]}</span>
+                  <span className="flex-1 text-sm">{k}</span>
+                  <input type="number" min="0" value={data.routine[k] || ""} onChange={e => setRoutine(k, e.target.value)} placeholder="min" className="w-20 bg-gray-800 rounded-lg px-2 py-1.5 text-sm text-right outline-none focus:ring-1 focus:ring-emerald-500 placeholder-gray-600" />
+                  <span className="text-xs text-emerald-400 w-12 text-right">{data.routine[k] ? minToHM(data.routine[k]) : "—"}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <p className="text-sm text-gray-300 font-semibold mb-3">Others</p>
+            <div className="flex gap-2 mb-3">
+              <input value={otherLabel} onChange={e => setOtherLabel(e.target.value)} onKeyDown={e => e.key === "Enter" && addOther()} placeholder="Activity" className="flex-1 bg-gray-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 placeholder-gray-600" />
+              <input value={otherDur} onChange={e => setOtherDur(e.target.value)} type="number" min="1" placeholder="min" className="w-20 bg-gray-800 rounded-lg px-2 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 placeholder-gray-600" />
+              <button onClick={addOther} className="bg-emerald-600 hover:bg-emerald-700 px-3 rounded-lg text-sm font-medium">Add</button>
+            </div>
+            {(data.others || []).length === 0
+              ? <p className="text-xs text-gray-600 text-center py-2">No extra activities added</p>
+              : (data.others || []).map(i => (
+                <div key={i.id} className="flex items-center justify-between py-2 border-t border-gray-800">
+                  <span className="text-sm">🔹 {i.label}</span>
+                  <div className="flex items-center gap-3"><span className="text-xs text-emerald-400">{minToHM(i.dur)}</span><button onClick={() => delOther(i.id)} className="text-gray-600 hover:text-red-400 text-lg leading-none">×</button></div>
+                </div>
+              ))}
+          </Card>
+        </div>
+      );
+    }
+
+    function SummaryTab({ skillMin, wastedMin, sleepMin, routineMin, unacc }) {
+      const rows = [
+        { label: "Upskilling", min: skillMin, color: C.upskilling },
+        { label: "Wasted Time", min: wastedMin, color: C.wasted },
+        { label: "Sleep", min: sleepMin, color: C.sleep },
+        { label: "Routine", min: routineMin, color: C.routine },
+        { label: "Unaccounted", min: unacc, color: C.unaccounted },
+      ];
+      const pieData = rows.filter(r => r.min > 0).map(r => ({ name: r.label, value: r.min, color: r.color }));
+      const productivity = skillMin + wastedMin > 0 ? Math.round(skillMin / (skillMin + wastedMin) * 100) : 0;
+      return (
+        <div className="space-y-3">
+          <Card className="text-center">
+            <p className="text-xs text-gray-500 mb-1">Productivity Score</p>
+            <p className="text-4xl font-bold" style={{ color: productivity >= 70 ? "#34d399" : productivity >= 40 ? "#fbbf24" : "#f87171" }}>{productivity}%</p>
+            <p className="text-xs text-gray-500 mt-1">Upskill vs wasted time ratio</p>
+          </Card>
+          <Card>
+            <p className="text-sm text-gray-300 font-semibold mb-2 text-center">24-Hour Breakdown</p>
+            {pieData.length > 0
+              ? <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie data={pieData} dataKey="value" cx="50%" cy="50%" outerRadius={75} innerRadius={40} paddingAngle={2}>
+                      {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                    </Pie>
+                    <Tooltip formatter={v => minToHM(v)} contentStyle={{ background: "#1f2937", border: "none", borderRadius: "8px", fontSize: "12px" }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              : <p className="text-center text-gray-600 py-10 text-sm">Log data in other tabs to see breakdown</p>}
+          </Card>
+          <Card>
+            <div className="space-y-2.5">
+              {rows.map(r => (
+                <div key={r.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{ background: r.color }} /><span className="text-sm">{r.label}</span></div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium" style={{ color: r.color }}>{minToHM(r.min)}</span>
+                      <span className="text-xs text-gray-500 w-8 text-right">{Math.round(r.min / 1440 * 100)}%</span>
+                    </div>
+                  </div>
+                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full" style={{ width: `${Math.round(r.min / 1440 * 100)}%`, background: r.color }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
+```
